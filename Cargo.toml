@@ -1,0 +1,8 @@
+[package]
+name = "vcdiff"
+version = "0.1.0"
+authors = ["Vincent (Speedy37) Rouille <vincent@speedy37.fr>"]
+
+[dependencies]
+nom = "3.2.1"
+num-traits = "0.1.40"
