@@ -1,5 +1,5 @@
 [package]
-name = "vcdiff"
+name = "vcdiff-rs"
 version = "0.1.0"
 authors = ["Vincent (Speedy37) Rouille <vincent@speedy37.fr>"]
 
