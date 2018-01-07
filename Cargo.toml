@@ -5,4 +5,4 @@ authors = ["Vincent (Speedy37) Rouille <vincent@speedy37.fr>"]
 
 [dependencies]
 nom = "3.2.1"
-num-traits = "0.1.40"
+memmap = "0.6.1"
