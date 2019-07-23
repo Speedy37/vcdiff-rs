@@ -1,6 +1,6 @@
-use std::mem;
-use nom::{IResult, Needed};
 use nom;
+use nom::{IResult, Needed};
+use std::mem;
 
 #[derive(Copy, Clone, Debug, PartialEq)]
 pub struct VarIntIncomplete<I> {
@@ -23,72 +23,73 @@ pub struct VarIntEncoder<I> {
 }
 
 macro_rules! impl_var_int_encoder {
-  ($T:ty) => {
-    impl Iterator for VarIntEncoder<$T> {
-      type Item = u8;
+    ($T:ty) => {
+        impl Iterator for VarIntEncoder<$T> {
+            type Item = u8;
 
-      #[inline]
-      fn next(&mut self) -> Option<u8> {
-        if self.remain > 1 {
-          self.remain -= 1;
-          let v = self.value >> self.remain * 7;
-          let next_byte = (v as u8 & 0b0111_1111) | 0b1000_0000;
-          Some(next_byte)
-        }
-        else if self.remain == 1 {
-          self.remain -= 1;
-          Some(self.value as u8 & 0b0111_1111)
-        }
-        else {
-          None
-        }
-      }
+            #[inline]
+            fn next(&mut self) -> Option<u8> {
+                if self.remain > 1 {
+                    self.remain -= 1;
+                    let v = self.value >> self.remain * 7;
+                    let next_byte = (v as u8 & 0b0111_1111) | 0b1000_0000;
+                    Some(next_byte)
+                } else if self.remain == 1 {
+                    self.remain -= 1;
+                    Some(self.value as u8 & 0b0111_1111)
+                } else {
+                    None
+                }
+            }
 
-      #[inline]
-      fn size_hint(&self) -> (usize, Option<usize>) {
-        (0, Some(self.remain as usize))
-      }
-    }
-  }
+            #[inline]
+            fn size_hint(&self) -> (usize, Option<usize>) {
+                (0, Some(self.remain as usize))
+            }
+        }
+    };
 }
 
 macro_rules! impl_var_int_encode_usize {
-  ($T:ty) => {
-    impl VarIntEncode<$T> for $T {
-      fn encode_varint(&self) -> VarIntEncoder<$T> {
-        let r = if *self > 0 {
-          (6 + mem::size_of::<$T>() as u8 * 8 - self.leading_zeros() as u8) / 7
-        } else {
-          1
-        };
-        VarIntEncoder { value: *self, remain: r }
-      }
-    }
-  }
+    ($T:ty) => {
+        impl VarIntEncode<$T> for $T {
+            fn encode_varint(&self) -> VarIntEncoder<$T> {
+                let r = if *self > 0 {
+                    (6 + mem::size_of::<$T>() as u8 * 8 - self.leading_zeros() as u8) / 7
+                } else {
+                    1
+                };
+                VarIntEncoder {
+                    value: *self,
+                    remain: r,
+                }
+            }
+        }
+    };
 }
 
 macro_rules! impl_var_int_decode {
-  ($T:ty) => {
-    impl VarIntDecode<$T> for $T {
-      fn decode_varint(i:&[u8]) -> IResult<&[u8], $T> {
-        let mut value = 0 as $T;
-        let mut read = 0usize;
-        for b in i.iter() {
-          read += 1;
-          let r = b & 0b01111111;
-          value |= r as $T;
-          if b & 0b10000000 == 0 {
-            return IResult::Done(&i[read..], value);
-          }
-          if value > <$T>::max_value() >> 7 {
-            return IResult::Error(nom::ErrorKind::Custom(1));
-          }
-          value <<= 7;
+    ($T:ty) => {
+        impl VarIntDecode<$T> for $T {
+            fn decode_varint(i: &[u8]) -> IResult<&[u8], $T> {
+                let mut value = 0 as $T;
+                let mut read = 0usize;
+                for b in i.iter() {
+                    read += 1;
+                    let r = b & 0b01111111;
+                    value |= r as $T;
+                    if b & 0b10000000 == 0 {
+                        return IResult::Done(&i[read..], value);
+                    }
+                    if value > <$T>::max_value() >> 7 {
+                        return IResult::Error(nom::ErrorKind::Custom(1));
+                    }
+                    value <<= 7;
+                }
+                IResult::Incomplete(Needed::Unknown)
+            }
         }
-        IResult::Incomplete(Needed::Unknown)
-      }
-    }
-  }
+    };
 }
 
 impl_var_int_encode_usize!(u16);
@@ -106,31 +107,37 @@ impl_var_int_decode!(usize);
 
 #[cfg(test)]
 mod tests {
-    use varint::{VarIntDecode, VarIntEncode};
-    use nom::IResult;
     use nom;
-    use std::mem;
+    use nom::IResult;
+    use varint::{VarIntDecode, VarIntEncode};
 
     macro_rules! impl_tests {
         ($T:ty, $overflow_name:ident) => {
             #[test]
             fn $overflow_name() {
-                let max_value = &mut <$T>::max_value().encode_varint().collect::< Vec<_>>();
-                { *max_value.last_mut().unwrap() += 1; }
+                let max_value = &mut <$T>::max_value().encode_varint().collect::<Vec<_>>();
+                {
+                    *max_value.last_mut().unwrap() += 1;
+                }
                 assert_eq!(
-                  <$T>::decode_varint(&max_value),
-                  IResult::Error(nom::ErrorKind::Custom(1))
+                    <$T>::decode_varint(&max_value),
+                    IResult::Error(nom::ErrorKind::Custom(1))
                 );
             }
-
-        }
+        };
     }
     macro_rules! impl_tests_usize {
         ($T:ty, $encode_decode_name:ident, $overflow_name:ident) => {
             #[test]
             fn $encode_decode_name() {
-                assert_eq!(<$T>::decode_varint(&<$T>::min_value().encode_varint().collect::<Vec<_>>()), IResult::Done(&b""[..], 0));
-                assert_eq!(<$T>::decode_varint(&(1 as $T).encode_varint().collect::<Vec<_>>()), IResult::Done(&b""[..], 1));
+                assert_eq!(
+                    <$T>::decode_varint(&<$T>::min_value().encode_varint().collect::<Vec<_>>()),
+                    IResult::Done(&b""[..], 0)
+                );
+                assert_eq!(
+                    <$T>::decode_varint(&(1 as $T).encode_varint().collect::<Vec<_>>()),
+                    IResult::Done(&b""[..], 1)
+                );
                 /*let mut n = 0;
                 while (n + 1) * 7 < mem::size_of::<$T>() * 8 {
                     let b = 1 << n * 7;
@@ -139,11 +146,14 @@ mod tests {
                     //assert_eq!(<$T>::decode_varint(&b.encode_varint().collect::<Vec<_>>()), VarIntResult::Complete((b, n)));
                     //assert_eq!(<$T>::decode_varint(&(e-1).encode_varint().collect::<Vec<_>>()), VarIntResult::Complete((e - 1, n)));
                 }*/
-                assert_eq!(<$T>::decode_varint(&<$T>::max_value().encode_varint().collect::<Vec<_>>()), IResult::Done(&b""[..], <$T>::max_value()));
+                assert_eq!(
+                    <$T>::decode_varint(&<$T>::max_value().encode_varint().collect::<Vec<_>>()),
+                    IResult::Done(&b""[..], <$T>::max_value())
+                );
             }
 
             impl_tests!($T, $overflow_name);
-        }
+        };
     }
 
     impl_tests_usize!(u64, encode_decode_u64, overflow_u64);

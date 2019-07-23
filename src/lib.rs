@@ -1,13 +1,15 @@
 #[macro_use]
 extern crate nom;
 
-mod varint;
-mod vcdiff;
 mod address_cache;
 mod code_table;
 mod decoder;
+mod varint;
+mod vcdiff;
 
-mod rolling_hash;
+#[cfg(encoder)]
 mod encoder;
+#[cfg(encoder)]
+mod rolling_hash;
 
 pub use decoder::{DecoderState, VCDiffDecoder};

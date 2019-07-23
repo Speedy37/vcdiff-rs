@@ -1,5 +1,5 @@
-use std::io;
 use nom::IResult;
+use std::io;
 use varint::VarIntDecode;
 
 static VCD_SELF: u8 = 0x00;
@@ -83,6 +83,7 @@ impl AddressCache {
         Ok(res)
     }
 
+    #[cfg(encoder)]
     pub fn encode(&mut self, addr: u64, here: u64) -> (u64, u8) {
         /* Attempt to find the address mode that yields the
          * smallest integer value for "d", the encoded address

@@ -1,11 +1,11 @@
-use std::io::{Read, Seek, Write};
-use vcdiff::{header, window_header, WindowHeader, VCD_SOURCE};
-use code_table::{CodeTable, Instruction, InstructionType};
 use address_cache::AddressCache;
+use code_table::{CodeTable, Instruction, InstructionType};
 use nom::{IResult, Needed};
-use std::ops::Range;
 use std::io;
+use std::io::{Read, Seek, Write};
+use std::ops::Range;
 use varint::VarIntDecode;
+use vcdiff::{header, window_header, WindowHeader, VCD_SOURCE};
 
 #[derive(Debug, PartialEq)]
 pub enum DecoderState {
@@ -115,75 +115,82 @@ impl<ORIGINAL: Read + Seek, TARGET: Write + Read + Seek> VCDiffDecoder<ORIGINAL,
             ))?;
         }
         {
-            let mut decode_inst =
-                |inst: Instruction, instructions: &[u8]| -> Result<usize, io::Error> {
-                    let mut size = inst.size as usize;
-                    let mut remaining_instructions = instructions;
-                    if size == 0 {
-                        match usize::decode_varint(remaining_instructions) {
-                            IResult::Done(r, sz) => {
-                                remaining_instructions = r;
-                                size = sz;
-                            }
-                            _ => Err(io::Error::new(
-                                io::ErrorKind::InvalidInput,
-                                "unable to get instruction size",
-                            ))?,
-                        };
-                    }
-
-                    match inst.typ {
-                        InstructionType::Add => {
-                            target_data.extend_from_slice(&remaining_adds_runs[0..size]);
-                            remaining_adds_runs = &remaining_adds_runs[size..];
+            let mut decode_inst = |inst: Instruction,
+                                   instructions: &[u8]|
+             -> Result<usize, io::Error> {
+                let mut size = inst.size as usize;
+                let mut remaining_instructions = instructions;
+                if size == 0 {
+                    match usize::decode_varint(remaining_instructions) {
+                        IResult::Done(r, sz) => {
+                            remaining_instructions = r;
+                            size = sz;
                         }
-                        InstructionType::Copy => {
-                            let source_length = window_header.source_segment.map_or(0u64, |r| r.1);
-                            let (r, addr) = address_cache.decode(
-                                (target_data.len() as u64) + source_length,
-                                inst.mode,
-                                remaining_addresses,
-                            )?;
-                            remaining_addresses = r;
-
-                            let s = window_header.source_segment.and_then(|(pos, sz)| {
-                                if addr < sz {
-                                    Some(pos)
-                                } else {
-                                    None
-                                }
-                            });
-
-                            if let Some(pos) = s {
-                                let target_pos = target_data.len();
-                                target_data.resize(target_pos + size, 0u8);
-                                if (window_header.win_indicator & VCD_SOURCE) > 0 {
-                                    original.seek(io::SeekFrom::Start(pos + addr))?;
-                                    original.read(&mut target_data[target_pos..target_pos + size])?;
-                                } else {
-                                    let current = target.seek(io::SeekFrom::Current(0))?;
-                                    target.seek(io::SeekFrom::Start(pos + addr))?;
-                                    target.read(&mut target_data[target_pos..target_pos + size])?;
-                                    target.seek(io::SeekFrom::Start(current))?;
-                                }
-                            } else {
-                                let target_pos = (addr - source_length) as usize;
-                                // probably quite slow...
-                                for idx in target_pos..target_pos + size {
-                                    let byte = target_data[idx];
-                                    target_data.push(byte);
-                                }
-                            }
-                        }
-                        InstructionType::Run => {
-                            let byte = remaining_adds_runs[0];
-                            let pos = target_data.len();
-                            remaining_adds_runs = &remaining_adds_runs[1..];
-                            target_data.resize(pos + size, byte);
-                        }
+                        _ => Err(io::Error::new(
+                            io::ErrorKind::InvalidInput,
+                            "unable to get instruction size",
+                        ))?,
                     };
-                    Ok(instructions.len() - remaining_instructions.len())
+                }
+
+                match inst.typ {
+                    InstructionType::Add => {
+                        target_data.extend_from_slice(&remaining_adds_runs[0..size]);
+                        remaining_adds_runs = &remaining_adds_runs[size..];
+                    }
+                    InstructionType::Copy => {
+                        let source_length = window_header.source_segment.map_or(0u64, |r| r.1);
+                        let (r, addr) = address_cache.decode(
+                            (target_data.len() as u64) + source_length,
+                            inst.mode,
+                            remaining_addresses,
+                        )?;
+                        remaining_addresses = r;
+
+                        let s = window_header.source_segment.and_then(|(pos, sz)| {
+                            if addr < sz {
+                                Some(pos)
+                            } else {
+                                None
+                            }
+                        });
+
+                        if let Some(pos) = s {
+                            let target_pos = target_data.len();
+                            target_data.resize(target_pos + size, 0u8);
+                            if (window_header.win_indicator & VCD_SOURCE) > 0 {
+                                original.seek(io::SeekFrom::Start(pos + addr))?;
+                                println!("original read_exact {} {}", pos + addr, size);
+                                original
+                                    .read_exact(&mut target_data[target_pos..target_pos + size])?;
+                                println!("original read_exact {} {} done", pos + addr, size);
+                            } else {
+                                let current = target.seek(io::SeekFrom::Current(0))?;
+                                target.seek(io::SeekFrom::Start(pos + addr))?;
+                                println!("target read_exact {} {}", pos + addr, size);
+                                target
+                                    .read_exact(&mut target_data[target_pos..target_pos + size])?;
+                                println!("target read_exact {} {} done", pos + addr, size);
+                                target.seek(io::SeekFrom::Start(current))?;
+                            }
+                        } else {
+                            let target_pos = (addr - source_length) as usize;
+                            // probably quite slow...
+                            for idx in target_pos..target_pos + size {
+                                let byte = target_data[idx];
+                                target_data.push(byte);
+                            }
+                        }
+                    }
+                    InstructionType::Run => {
+                        let byte = remaining_adds_runs[0];
+                        let pos = target_data.len();
+                        remaining_adds_runs = &remaining_adds_runs[1..];
+                        target_data.resize(pos + size, byte);
+                    }
                 };
+                Ok(instructions.len() - remaining_instructions.len())
+            };
 
             let mut remaining_instructions = instructions;
             while let Some((&inst_index, r)) = remaining_instructions.split_first() {
@@ -263,8 +270,7 @@ impl<ORIGINAL: Read + Seek, TARGET: Write + Read + Seek> VCDiffDecoder<ORIGINAL,
 #[cfg(test)]
 mod tests {
     use std::fs::File;
-    use std::io::{Read, Seek};
-    use nom::IResult;
+    use std::io::Read;
     use {DecoderState, VCDiffDecoder};
 
     #[test]

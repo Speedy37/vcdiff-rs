@@ -1,7 +1,7 @@
 use rolling_hash::RollingHash;
-use std::io::{BufReader, Read, Seek, Write};
-use std::io;
 use std::cmp;
+use std::io;
+use std::io::{BufReader, Read, Seek, Write};
 use std::mem;
 
 /// cpu/memory efficient hashmap from hash_value to multiple window indexes

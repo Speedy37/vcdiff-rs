@@ -50,7 +50,8 @@ impl CodeTable {
                     2 => Ok(Some(InstructionType::Run)),
                     3 => Ok(Some(InstructionType::Copy)),
                     _ => Err(1u32),
-                }?.map(|typ| Instruction {
+                }?
+                .map(|typ| Instruction {
                     typ: typ,
                     size: bytes[i + 256 + 512],
                     mode: bytes[i + 256 + 1024],
@@ -65,6 +66,7 @@ impl CodeTable {
         }
     }
 
+    #[cfg(encoder)]
     pub fn encode(&self) -> [u8; 256 * 3 * 2] {
         let mut ret = [0u8; 256 * 3 * 2];
 
