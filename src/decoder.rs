@@ -20,7 +20,21 @@ enum DecoderInternalState {
     WantWindowData,
 }
 
-pub struct VCDiffDecoder<ORIGINAL: Read + Seek, TARGET: Write + Read + Seek> {
+pub trait ReadSlice {
+    fn read_slice(&mut self, pos: io::SeekFrom, buf: &mut [u8]) -> io::Result<()>;
+}
+
+impl<T: Read + Seek> ReadSlice for T {
+    fn read_slice(&mut self, pos: io::SeekFrom, buf: &mut [u8]) -> io::Result<()> {
+        let current = self.seek(io::SeekFrom::Current(0))?;
+        self.seek(pos)?;
+        self.read_exact(buf)?;
+        self.seek(io::SeekFrom::Start(current))?;
+        Ok(())
+    }
+}
+
+pub struct VCDiffDecoder<ORIGINAL: Read + Seek, TARGET: Write + ReadSlice> {
     original: ORIGINAL,
     target: TARGET,
     state: DecoderInternalState,
@@ -30,7 +44,7 @@ pub struct VCDiffDecoder<ORIGINAL: Read + Seek, TARGET: Write + Read + Seek> {
     buffer: Vec<u8>,
 }
 
-impl<ORIGINAL: Read + Seek, TARGET: Write + Read + Seek> VCDiffDecoder<ORIGINAL, TARGET> {
+impl<ORIGINAL: Read + Seek, TARGET: Write + ReadSlice> VCDiffDecoder<ORIGINAL, TARGET> {
     pub fn new(
         original: ORIGINAL,
         target: TARGET,
@@ -165,13 +179,10 @@ impl<ORIGINAL: Read + Seek, TARGET: Write + Read + Seek> VCDiffDecoder<ORIGINAL,
                                     .read_exact(&mut target_data[target_pos..target_pos + size])?;
                                 println!("original read_exact {} {} done", pos + addr, size);
                             } else {
-                                let current = target.seek(io::SeekFrom::Current(0))?;
-                                target.seek(io::SeekFrom::Start(pos + addr))?;
-                                println!("target read_exact {} {}", pos + addr, size);
-                                target
-                                    .read_exact(&mut target_data[target_pos..target_pos + size])?;
-                                println!("target read_exact {} {} done", pos + addr, size);
-                                target.seek(io::SeekFrom::Start(current))?;
+                                target.read_slice(
+                                    io::SeekFrom::Start(pos + addr),
+                                    &mut target_data[target_pos..target_pos + size],
+                                )?;
                             }
                         } else {
                             let target_pos = (addr - source_length) as usize;
@@ -208,6 +219,14 @@ impl<ORIGINAL: Read + Seek, TARGET: Write + Read + Seek> VCDiffDecoder<ORIGINAL,
         target.write(&target_data)?;
 
         Ok(())
+    }
+
+    pub fn get_mut(&mut self) -> (&mut ORIGINAL, &mut TARGET) {
+        (&mut self.original, &mut self.target)
+    }
+
+    pub fn into_inner(self) -> (ORIGINAL, TARGET) {
+        (self.original, self.target)
     }
 
     pub fn decode(&mut self, input: &[u8]) -> Result<DecoderState, io::Error> {

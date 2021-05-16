@@ -12,4 +12,4 @@ mod encoder;
 #[cfg(encoder)]
 mod rolling_hash;
 
-pub use decoder::{DecoderState, VCDiffDecoder};
+pub use decoder::{DecoderState, ReadSlice, VCDiffDecoder};

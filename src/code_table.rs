@@ -96,8 +96,10 @@ impl CodeTable {
 
         ret
     }
+}
 
-    pub fn default() -> CodeTable {
+impl Default for CodeTable {
+    fn default() -> CodeTable {
         let mut vec = [(
             Instruction {
                 typ: InstructionType::Add,
