@@ -73,7 +73,7 @@ pub struct WindowHeader {
     pub copy_addresses_size: u32,
 }
 
-static VCD_DECOMPRESS: u8 = 0x01;
+// static VCD_DECOMPRESS: u8 = 0x01;
 static VCD_CODETABLE: u8 = 0x02;
 static VCD_APPHEADER: u8 = 0x04;
 
